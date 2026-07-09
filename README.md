@@ -1,0 +1,173 @@
+# spotipi-photos
+
+Adds an **Apple Photos slideshow** to a Ryan Ward–style spotipi LED‑matrix build, with a
+rebuilt **web control panel** (modes, live brightness, a *working* screen‑off timer, and a
+daily schedule). Photos sync from a named Apple Photos album on your Mac to the Pi; when you
+remove a photo from the album it disappears from the Pi automatically.
+
+```
+Mac (Apple Photos album)
+   │  sync_album.py  — crop/resize to 64×64 PNG, rsync --delete
+   ▼
+Raspberry Pi  /home/pi/spotipi-photos/photos/   ← exact mirror of the album
+   │  displaySpotipi.py  — slideshow + Spotify priority, reads state.json live
+   │  client/app.py      — web UI on :80, writes state.json
+   ▼
+64×64 RGB LED matrix
+```
+
+## Why this fixes the broken screen‑off timer
+The original web app turned the panel on/off by `systemctl start/stop`‑ing the display
+service and *restarted* it on every brightness change. That makes timers and brightness
+fragile. Here the **display daemon is always running** and re‑reads `config/state.json` every
+loop. The web UI only writes that file — no service juggling — so brightness is live and the
+timer is enforced reliably by the daemon itself.
+
+---
+
+## Part A — Raspberry Pi (spotipi.local)
+
+> Network note: you currently can't SSH to the Pi. Everything below assumes SSH/file access is
+> restored. Until then you can copy `spotipi-photos/` onto the Pi with a USB stick or microSD.
+
+1. Copy the `spotipi-photos/` folder to the Pi, e.g. `~/spotipi-photos`.
+2. Make sure the Spotify token exists (same as original spotipi):
+   ```bash
+   cd ~/spotipi-photos
+   bash generate-token.sh        # if you don't already have a .cache-<username>
+   ```
+   *(Reuse your existing `.cache-<username>` from the current install if you have one.)*
+3. Install:
+   ```bash
+   cd ~/spotipi-photos
+   sudo bash install_pi.sh
+   ```
+   It installs deps, asks for your Spotify username / token path / client id+secret / redirect
+   URI, and creates two services:
+   - `spotipi` → `python/displaySpotipi.py`
+   - `spotipi-client` → `python/client/app.py` (web UI, port 80)
+
+   If the Adafruit `rgbmatrix` driver isn't built on this Pi yet, run the Adafruit installer
+   once (the script prints the command), then re‑run `install_pi.sh`.
+4. Open **http://spotipi.local** in any browser on your network.
+
+Set your real panel details in `config/rgb_options.ini` (rows/columns, `hardware_mapping`,
+`gpio_slowdown`) and `sudo systemctl restart spotipi` if you change them.
+
+### Controls (web UI)
+- **Now on the panel** — a live dashboard at the top: a snapshot preview of what's
+  actually on the matrix right now, the current song/artist or photo, a daemon
+  health dot, and stats (photo count, brightness, last sync, timer left, CPU temp,
+  uptime). Refreshes every few seconds.
+- **On (auto)** — Spotify art while music plays, photo slideshow otherwise.
+- **Off** — blank panel (daemon keeps running).
+- **Photos only** / **Spotify only** — force one source.
+- **Brightness** — live slider, 1–100, no restart. (This is the *daytime* level when the
+  sunrise/sunset dimmer is on.)
+- **Photo slideshow** — seconds per photo, plus a **Change photo** button to skip to the next
+  photo immediately.
+- **Screen timer** — turn the panel off after N minutes; the countdown restarts when you save
+  it or tap a Display button.
+- **Daily schedule** — recurring off window (handles overnight, e.g. 23:00→07:00).
+- **Sunrise/sunset dimmer** — automatically drops to a lower night brightness between sunset
+  and sunrise (times computed from your latitude/longitude — no internet or API key needed),
+  and returns to the Brightness slider level during the day.
+
+---
+
+## Part B — Mac (Apple Photos → Pi)
+
+The Pi can't read your Mac's Photos library, so a small job runs on the Mac.
+
+1. In **Apple Photos**, create an album named exactly **`Spotipi`** and add photos to it.
+2. Install deps and set up SSH:
+   ```bash
+   cd spotipi-photos/mac
+   bash install_mac.sh
+   ssh-copy-id pi@spotipi.local      # passwordless SSH for rsync
+   ```
+3. Test it:
+   ```bash
+   python3 sync_album.py --dry-run    # shows what it would send
+   python3 sync_album.py              # actually syncs
+   ```
+4. Automate every 5 minutes:
+   - Edit `com.spotipi.albumsync.plist` — set the `python3` path, the full path to
+     `sync_album.py`, and your album/host values.
+   ```bash
+   cp com.spotipi.albumsync.plist ~/Library/LaunchAgents/
+   launchctl load ~/Library/LaunchAgents/com.spotipi.albumsync.plist
+   ```
+
+`sync_album.py` options: `--album`, `--pi-host`, `--pi-dir`, `--size`, `--ssh-port`, `--dry-run`.
+
+### How deletion sync works
+`sync_album.py` rebuilds the full album as 64×64 PNGs in a temp folder, then
+`rsync -av --delete` mirrors it to the Pi's `photos/` folder. `--delete` removes any file on
+the Pi that's no longer in the album. Photos still in iCloud and not downloaded locally are
+skipped with a warning — open them once in Photos to download.
+
+---
+
+## Automatic updates
+`mac/auto_update.sh` (run by `com.spotipi.autoupdate.plist` every 6 hours) watches
+`spotipi-photos-latest.zip` in the AI projects folder. When a new version appears it
+pushes the code to the Pi, restarts the services, health-checks them, and rolls back
+automatically if they fail to start. It never touches the Pi's live config, photos, or
+token. One-time Pi setup is required so the Mac can restart the services without a
+password prompt -- see spotipi-update.sudoers:
+    sudo cp spotipi-update.sudoers /etc/sudoers.d/spotipi-update
+    sudo chmod 440 /etc/sudoers.d/spotipi-update
+Then on the Mac:
+    cp mac/com.spotipi.autoupdate.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.spotipi.autoupdate.plist
+Log: /tmp/spotipi-update.log
+
+## Files
+```
+spotipi-photos/
+├── install_pi.sh              # Pi installer (creates systemd services)
+├── SPOTIFY_TOKEN_RENEWAL.txt  # how to refresh the Spotify token (~every 6 months)
+├── README.md
+├── config/
+│   ├── rgb_options.ini        # matrix hardware (64×64 default)
+│   ├── state.json             # live state written by the web UI
+│   ├── default.png            # shown when nothing else to display
+│   ├── spotipi.service        # display daemon unit
+│   └── spotipi-client.service # web UI unit
+├── python/
+│   ├── displaySpotipi.py      # main display daemon
+│   ├── display_logic.py       # pure mode/timer/schedule logic (tested)
+│   ├── getSongInfo.py         # Spotify now-playing helper
+│   ├── state.py               # atomic state.json read/write
+│   └── client/
+│       ├── app.py             # Flask web UI (port 80)
+│       └── templates/index.html
+├── photos/                    # mirror of the album (populated by the Mac)
+├── mac/
+│   ├── sync_album.py          # Apple Photos → Pi sync
+│   ├── install_mac.sh
+│   └── com.spotipi.albumsync.plist
+└── tests/
+    └── test_logic.py
+```
+
+## Troubleshooting
+- **Web UI loads but panel won't change** → `sudo systemctl status spotipi` and
+  `journalctl -u spotipi -n 50`. Confirm the `rgbmatrix` driver is installed.
+- **No Spotify art** → token/scope issue; the daemon falls back to `default.png`. Re‑run
+  `generate-token.sh`. Needs scope `user-read-currently-playing user-read-playback-state`.
+- **Photos not updating** → on the Mac check `/tmp/spotipi-albumsync.log` and that
+  `ssh pi@spotipi.local` works without a password.
+- **Panel flickers** → raise `gpio_slowdown` to 3 or 4 in `rgb_options.ini`, restart spotipi.
+
+
+- **Panel blank / `Permission denied: state.json` or `default.png`** → the LED
+  library drops root to the `daemon` user unless told not to. v1.2 sets
+  `options.drop_privileges = False` in displaySpotipi.py so the daemon stays
+  root. If you see this on an older copy, add that line before `RGBMatrix(...)`.
+- **Web UI dead / `No module named flask`** → install a Python 3.7-compatible
+  Flask:  `sudo python3 -m pip install "Flask==2.0.3" "Werkzeug==2.0.3"`.
+- **Scheduled Mac sync finds 0 photos** → grant Full Disk Access to your
+  python3 (add `/Library/Frameworks/Python.framework/Versions/<ver>/Resources/Python.app`
+  via ⌘⇧G in the picker). Manual Terminal runs work without this.

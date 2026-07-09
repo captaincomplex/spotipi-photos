@@ -1,0 +1,101 @@
+================================================================
+ RENEWING THE SPOTIFY TOKEN FOR SPOTIPI
+ (do this roughly every 6 months, or whenever album art stops
+  appearing on the panel)
+================================================================
+
+WHY THIS IS NEEDED
+------------------
+Spotipi authenticates to Spotify using a saved token file:
+
+    /home/pi/spotipi-photos/.cache-yourusername
+
+Inside it are an access token, a refresh token, and an expiry time.
+Normally the software refreshes the access token automatically and you
+never touch this. However, Spotify periodically invalidates the
+underlying authorisation (about every 6 months, and also if you change
+your Spotify password or edit the app in the developer dashboard).
+When that happens the panel stops showing album art and falls back to
+the default image. Renewing = re-doing the one-time login so a fresh
+token file is written.
+
+HOW TO TELL IT HAS EXPIRED
+--------------------------
+- Music is playing but the matrix shows the default image / photos
+  instead of the album cover.
+- On the Pi:  journalctl -u spotipi -n 30
+  shows Spotify auth errors (e.g. "invalid_grant" or 401 Unauthorized).
+
+WHAT YOU NEED BEFORE STARTING
+-----------------------------
+Your Spotify app credentials (from https://developer.spotify.com/dashboard).
+If you don't have them written down, they are stored on the Pi here:
+
+    sudo cat /etc/systemd/system/spotipi.service.d/spotipi_env.conf
+
+That file lists:
+    SPOTIPY_CLIENT_ID
+    SPOTIPY_CLIENT_SECRET
+    SPOTIPY_REDIRECT_URI    (e.g. http://127.0.0.1/callback)
+
+RENEWAL STEPS
+-------------
+1. SSH into the Pi from your Mac:
+
+       ssh pi@spotipi.local
+
+2. Go to the spotipi folder:
+
+       cd ~/spotipi-photos
+
+3. Run the token generator:
+
+       bash generate-token.sh
+
+   Answer the prompts:
+     - Spotify Client ID:      (from the env file above)
+     - Spotify Client Secret:  (from the env file above)
+     - Spotify Redirect URI:   the SAME value as before, exactly
+                               (e.g. http://127.0.0.1/callback)
+     - Spotify username:       yourusername
+
+4. It prints a long https://accounts.spotify.com/... URL.
+   Copy that URL into a web browser on any device and log in / click
+   "Agree". Your browser will then redirect to your redirect URI, which
+   will look like a page that won't load, e.g.:
+
+       http://127.0.0.1/callback?code=AQD...very-long...
+
+   Copy that ENTIRE redirected URL from the browser's address bar and
+   paste it back into the terminal when prompted, then press Enter.
+
+5. This writes a fresh token file:  .cache-yourusername
+   (It overwrites the old one in place - the path stays the same, so no
+   other configuration needs changing.)
+
+6. Restart the display service so it picks up the new token:
+
+       sudo systemctl restart spotipi
+
+7. Verify: play a song and watch the panel - the album cover should
+   appear within a couple of seconds. If not:
+
+       journalctl -u spotipi -n 30
+
+COMMON GOTCHAS
+--------------
+- The Redirect URI must match EXACTLY what is registered in the Spotify
+  developer dashboard (scheme, host, port, path, trailing slash). A
+  mismatch is the #1 cause of failure.
+- Make sure you paste the FULL redirected URL (including the ?code=...
+  part), not just the code.
+- The token file must stay at /home/pi/spotipi-photos/.cache-yourusername
+  because that path was given to the service at install time. If you ever
+  move it, update the ExecStart line in
+  /etc/systemd/system/spotipi.service accordingly.
+
+TIP: SET A REMINDER
+-------------------
+Put a recurring calendar reminder every 5 months titled
+"Renew Spotipi Spotify token" so you refresh it before it lapses.
+================================================================

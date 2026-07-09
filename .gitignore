@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Spotify token & secrets (never commit)
+.cache-*
+.env
+*_secret*
+*.key
+
+# Synced user photos (mirror of the Apple Photos album; not source)
+photos/*
+!photos/.gitkeep

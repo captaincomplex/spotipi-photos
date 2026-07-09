@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>spotipi-photos</title>
+<meta name="description" content="An Apple Photos slideshow for a spotipi LED-matrix build, with a rebuilt web control panel: modes, live brightness, a working screen-off timer, and a daily schedule.">
+<style>
+  :root{
+    --bg:#0b0f0c; --panel:#121a15; --panel2:#0e1511; --line:#203026;
+    --text:#e9f2ec; --muted:#94a89c; --green:#1db954; --green2:#1ed760;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.6;-webkit-font-smoothing:antialiased}
+  a{color:var(--green2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:960px;margin:0 auto;padding:0 24px}
+  header{padding:80px 0 52px;text-align:center;border-bottom:1px solid var(--line);
+    background:radial-gradient(1100px 380px at 50% -10%,rgba(29,185,84,.16),transparent)}
+  .eyebrow{font-family:var(--mono);letter-spacing:.32em;text-transform:uppercase;
+    font-size:12px;color:var(--green2);margin-bottom:18px}
+  .logo{width:56px;height:56px;border-radius:14px;background:#000;border:1px solid var(--line);
+    display:inline-flex;align-items:center;justify-content:center;margin-bottom:18px}
+  .logo span{width:26px;height:26px;border-radius:50%;background:var(--green)}
+  h1{font-size:clamp(2.2rem,6vw,3.4rem);margin:0 0 12px;letter-spacing:-.02em}
+  code.pkg{font-family:var(--mono)}
+  .tag{color:var(--muted);font-size:clamp(1rem,2.4vw,1.2rem);max-width:660px;margin:0 auto}
+  section{padding:56px 0;border-bottom:1px solid var(--line)}
+  h2{font-size:1.6rem;margin:0 0 8px;letter-spacing:-.01em}
+  .lead{color:var(--muted);margin:0 0 28px}
+  .grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px 22px}
+  .card h3{margin:0 0 6px;font-size:1.05rem}
+  .card p{margin:0;color:var(--muted);font-size:.95rem}
+  .diagram{width:100%;height:auto;background:var(--panel2);border:1px solid var(--line);border-radius:12px}
+  .fixbox{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:24px 26px}
+  .fixbox h3{margin:0 0 10px}
+  .fixbox p{margin:0;color:var(--muted)}
+  code,pre{font-family:var(--mono)}
+  pre{background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+    padding:18px;overflow:auto;font-size:.85rem;color:#cfeeda}
+  .split{display:grid;gap:20px;grid-template-columns:1fr 1fr}
+  @media(max-width:680px){.split{grid-template-columns:1fr}}
+  .split .card h3 span{font-family:var(--mono);font-size:12px;color:var(--green2);display:block;margin-bottom:4px}
+  ul.clean{margin:0;padding-left:18px;color:var(--muted);font-size:.95rem}
+  ul.clean li{margin:4px 0}
+  .note{background:var(--panel2);border-left:3px solid var(--green);
+    padding:14px 18px;border-radius:0 8px 8px 0;color:var(--muted);font-size:.92rem}
+  footer{padding:40px 0 64px;color:var(--muted);font-size:.9rem;text-align:center}
+  .cta{display:inline-block;margin-top:20px;font-family:var(--mono);font-size:14px;
+    border:1px solid var(--green);color:var(--green2);padding:10px 20px;border-radius:8px}
+  .cta:hover{background:var(--green);color:#04140a;text-decoration:none}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="eyebrow">Raspberry Pi &middot; LED Matrix</div>
+    <div class="logo"><span></span></div>
+    <h1><code class="pkg">spotipi-photos</code></h1>
+    <p class="tag">Adds an <strong>Apple Photos slideshow</strong> to a Ryan Ward&ndash;style spotipi
+      LED-matrix build, with a rebuilt <strong>web control panel</strong>: modes, live brightness,
+      a <em>working</em> screen-off timer, and a daily schedule.</p>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>How it fits together</h2>
+    <p class="lead">Photos sync from a named Apple Photos album on your Mac to the Pi. Remove a photo from the album and it disappears from the Pi automatically.</p>
+    <svg class="diagram" viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Architecture: Mac Apple Photos album syncs to Raspberry Pi, which drives a 64x64 LED matrix">
+      <defs>
+        <marker id="arw" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+          <path d="M0,0 L9,5 L0,10 z" fill="#1db954"/>
+        </marker>
+        <style>
+          .box{fill:#121a15;stroke:#203026;stroke-width:1.5;rx:10}
+          .t{fill:#e9f2ec;font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;font-weight:600}
+          .s{fill:#94a89c;font-family:SFMono-Regular,Consolas,monospace;font-size:11px}
+          .ln{stroke:#1db954;stroke-width:2;fill:none;marker-end:url(#arw)}
+        </style>
+      </defs>
+      <rect class="box" x="30" y="40" width="220" height="90" rx="10"/>
+      <text class="t" x="52" y="72">Mac</text>
+      <text class="s" x="52" y="94">Apple Photos album "Spotipi"</text>
+      <text class="s" x="52" y="112">sync_album.py &rarr; 64&times;64 PNG</text>
+
+      <line class="ln" x1="250" y1="85" x2="300" y2="85"/>
+      <text class="s" x="256" y="76">rsync --delete</text>
+
+      <rect class="box" x="300" y="40" width="230" height="90" rx="10"/>
+      <text class="t" x="322" y="72">Raspberry Pi</text>
+      <text class="s" x="322" y="94">photos/ = exact album mirror</text>
+      <text class="s" x="322" y="112">displaySpotipi.py daemon</text>
+
+      <line class="ln" x1="415" y1="130" x2="415" y2="185"/>
+      <text class="s" x="425" y="162">reads state.json live</text>
+
+      <rect class="box" x="300" y="185" width="230" height="80" rx="10"/>
+      <text class="t" x="322" y="217">64&times;64 RGB LED matrix</text>
+      <text class="s" x="322" y="239">Spotify art if playing,</text>
+      <text class="s" x="322" y="255">else photo slideshow</text>
+
+      <rect class="box" x="575" y="40" width="155" height="90" rx="10"/>
+      <text class="t" x="596" y="72">Web UI</text>
+      <text class="s" x="596" y="94">client/app.py :80</text>
+      <text class="s" x="596" y="112">writes state.json</text>
+      <line class="ln" x1="575" y1="95" x2="532" y2="103"/>
+    </svg>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Why it fixes the broken screen-off timer</h2>
+    <div class="fixbox">
+      <p>The original web app turned the panel on and off by <code>systemctl start/stop</code>-ing the
+      display service and restarted it on every brightness change &mdash; which made timers and
+      brightness fragile. Here the <strong>display daemon is always running</strong> and re-reads
+      <code>config/state.json</code> every loop. The web UI only writes that file &mdash; no service
+      juggling &mdash; so brightness is live and the timer is enforced by the daemon itself.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Web control panel</h2>
+    <p class="lead">A Flask UI on port 80, reachable from any browser on your network.</p>
+    <div class="grid">
+      <div class="card"><h3>Now on the panel</h3><p>Live dashboard: a snapshot preview of the matrix, current song/artist or photo, a daemon health dot, and stats &mdash; photo count, brightness, last sync, timer left, CPU temp, uptime.</p></div>
+      <div class="card"><h3>Display modes</h3><p>On (auto): Spotify art while music plays, photos otherwise. Plus Off, Photos only, and Spotify only.</p></div>
+      <div class="card"><h3>Live brightness</h3><p>A 1&ndash;100 slider with no restart. This is also the daytime level when the sunrise/sunset dimmer is on.</p></div>
+      <div class="card"><h3>Photo slideshow</h3><p>Seconds per photo, plus a Change photo button to skip to the next image immediately.</p></div>
+      <div class="card"><h3>Screen timer</h3><p>Turn the panel off after N minutes; the countdown restarts when you save it or tap a Display button.</p></div>
+      <div class="card"><h3>Daily schedule</h3><p>A recurring off window that handles overnight spans, e.g. 23:00&rarr;07:00.</p></div>
+      <div class="card"><h3>Sunrise/sunset dimmer</h3><p>Drops to a lower night brightness between sunset and sunrise, computed from your latitude/longitude &mdash; no internet or API key needed.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Two halves</h2>
+    <div class="split">
+      <div class="card">
+        <h3><span>Part A</span>Raspberry Pi</h3>
+        <ul class="clean">
+          <li>Copy <code>spotipi-photos/</code> to the Pi.</li>
+          <li>Ensure the Spotify token exists (reuse your existing <code>.cache-&lt;username&gt;</code>).</li>
+          <li><code>sudo bash install_pi.sh</code> installs deps and creates two systemd services: <code>spotipi</code> (display daemon) and <code>spotipi-client</code> (web UI on :80).</li>
+          <li>Set panel details in <code>config/rgb_options.ini</code> (rows/columns, hardware mapping, gpio_slowdown).</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span>Part B</span>Mac &rarr; Pi</h3>
+        <ul class="clean">
+          <li>Create an Apple Photos album named exactly <code>Spotipi</code>.</li>
+          <li><code>install_mac.sh</code> + <code>ssh-copy-id</code> for passwordless rsync.</li>
+          <li><code>sync_album.py</code> rebuilds the album as 64&times;64 PNGs and <code>rsync -av --delete</code> mirrors it &mdash; so deletions propagate.</li>
+          <li>A LaunchAgent runs the sync every 5 minutes.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Automatic updates</h2>
+    <p class="lead"><code>mac/auto_update.sh</code> watches for a new <code>spotipi-photos-latest.zip</code> every 6 hours.</p>
+    <p style="color:var(--muted);margin:0 0 20px">When a new version appears it pushes the code to the Pi,
+      restarts the services, health-checks them, and rolls back automatically if they fail to start.
+      It never touches the Pi's live config, photos, or token.</p>
+    <div class="note">The display daemon falls back to <code>config/default.png</code> whenever there's
+      nothing else to show &mdash; e.g. a Spotify token/scope issue. Token refresh is documented in
+      <code>SPOTIFY_TOKEN_RENEWAL.txt</code>.</div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    spotipi-photos &mdash; see <code>README.md</code> for full Pi and Mac setup, controls and troubleshooting.
+    <br><a class="cta" href="README.md">Read the docs &rarr;</a>
+  </div>
+</footer>
+</body>
+</html>

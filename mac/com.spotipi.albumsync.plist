@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd job: runs sync_album.py every 5 minutes.
+  Pre-filled for: Mac user you, Pi user pi, album "Spotipi".
+
+  Verify the path below matches where you unzipped the folder, then:
+    cp com.spotipi.albumsync.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.spotipi.albumsync.plist
+  Unload:
+    launchctl unload ~/Library/LaunchAgents/com.spotipi.albumsync.plist
+
+  If `which python3` on your Mac is not /usr/bin/python3, update the first
+  <string> below to match.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.spotipi.albumsync</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/you/Dropbox/AI projects/Spotipi Photos/spotipi-photos/mac/sync_album.py</string>
+        <string>--album</string>
+        <string>Spotipi</string>
+        <string>--pi-host</string>
+        <string>pi@spotipi.local</string>
+        <string>--pi-dir</string>
+        <string>/home/pi/spotipi-photos/photos</string>
+        <string>--size</string>
+        <string>64</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/spotipi-albumsync.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/spotipi-albumsync.err</string>
+</dict>
+</plist>

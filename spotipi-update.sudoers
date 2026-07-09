@@ -1,0 +1,6 @@
+# Install on the Pi so the automatic updater can restart the services
+# non-interactively:
+#   sudo cp spotipi-update.sudoers /etc/sudoers.d/spotipi-update
+#   sudo chmod 440 /etc/sudoers.d/spotipi-update
+# (systemctl lives at /bin/systemctl on Raspbian Buster; /usr/bin on newer.)
+pi ALL=(ALL) NOPASSWD: /bin/systemctl restart spotipi spotipi-client, /usr/bin/systemctl restart spotipi spotipi-client

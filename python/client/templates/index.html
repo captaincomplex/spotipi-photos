@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>spotipi control</title>
+  <style>
+    :root { --bg:#121214; --card:#1e1e22; --fg:#f2f2f4; --muted:#9a9aa2;
+            --accent:#1db954; --accent2:#3b82f6; --danger:#e0344b; --line:#2c2c31; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+           background:var(--bg); color:var(--fg); padding:1rem; }
+    .wrap { max-width:520px; margin:0 auto; }
+    h1 { font-size:1.4rem; margin:.2rem 0 1rem; }
+    h1 small { color:var(--muted); font-weight:400; font-size:.8rem; display:block; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px;
+            padding:1rem 1.1rem; margin-bottom:1rem; }
+    .card h2 { font-size:.8rem; text-transform:uppercase; letter-spacing:.06em;
+               color:var(--muted); margin:0 0 .8rem; }
+    .modes { display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
+    button, input[type=submit] { font:inherit; cursor:pointer; border:none; border-radius:10px;
+            padding:.7rem 1rem; color:#fff; background:#2f2f36; transition:transform .05s; }
+    button:active { transform:scale(.97); }
+    .mode-btn.active { outline:2px solid var(--accent); background:#2a3a2e; }
+    .mode-on.active   { outline-color:var(--accent);  background:#1f3326; }
+    .mode-off.active  { outline-color:var(--danger);  background:#3a2025; }
+    .mode-photos.active,.mode-spotify.active { outline-color:var(--accent2); background:#1f2940; }
+    label { display:block; font-size:.9rem; margin:.4rem 0 .3rem; color:var(--fg); }
+    input[type=range] { width:100%; accent-color:var(--accent); }
+    input[type=number], input[type=time], select {
+            background:#16161a; color:var(--fg); border:1px solid var(--line);
+            border-radius:8px; padding:.5rem; font:inherit; }
+    .row { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
+    .row > * { margin:0; }
+    .save { background:var(--accent); }
+    .switch { display:flex; align-items:center; gap:.5rem; margin-bottom:.6rem; }
+    .pill { font-size:.78rem; color:var(--muted); }
+    .big { font-size:1.5rem; font-weight:600; }
+    form { margin:0; }
+    hr { border:none; border-top:1px solid var(--line); margin:.9rem 0; }
+    /* dashboard */
+    .dash { display:flex; gap:1rem; align-items:center; }
+    .preview { width:96px; height:96px; border-radius:10px; border:1px solid var(--line);
+               background:#000; image-rendering:pixelated; flex:0 0 auto; }
+    .dash-info { min-width:0; flex:1; }
+    .dash-now { font-size:1.05rem; font-weight:600; overflow:hidden;
+                text-overflow:ellipsis; white-space:nowrap; }
+    .dash-sub { font-size:.82rem; color:var(--muted); margin-top:.15rem; }
+    .dot { display:inline-block; width:.55rem; height:.55rem; border-radius:50%;
+           background:var(--accent); margin-right:.35rem; vertical-align:middle; }
+    .dot.dead { background:var(--danger); }
+    .stats { display:grid; grid-template-columns:1fr 1fr; gap:.35rem .9rem;
+             margin-top:.8rem; font-size:.82rem; }
+    .stats .k { color:var(--muted); }
+    .stats .v { color:var(--fg); float:right; font-variant-numeric:tabular-nums; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>spotipi <small>{{ photo_count }} photo(s) synced &middot; mode: {{ s.mode }}</small></h1>
+
+  <!-- LIVE DASHBOARD -->
+  <div class="card">
+    <h2>Now on the panel</h2>
+    <div class="dash">
+      <img id="preview" class="preview" src="/preview.png" alt="panel preview">
+      <div class="dash-info">
+        <div class="dash-now" id="dash_now">…</div>
+        <div class="dash-sub" id="dash_sub"><span class="dot" id="dash_dot"></span><span id="dash_state">loading…</span></div>
+        <div class="stats">
+          <div><span class="k">Photos</span><span class="v" id="st_photos">–</span></div>
+          <div><span class="k">Brightness</span><span class="v" id="st_bright">–</span></div>
+          <div><span class="k">Last sync</span><span class="v" id="st_sync">–</span></div>
+          <div><span class="k">Timer left</span><span class="v" id="st_timer">–</span></div>
+          <div><span class="k">CPU temp</span><span class="v" id="st_temp">–</span></div>
+          <div><span class="k">Uptime</span><span class="v" id="st_uptime">–</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DISPLAY MODE -->
+  <div class="card">
+    <h2>Display</h2>
+    <div class="modes">
+      <form action="/mode" method="post"><button name="mode" value="on"
+        class="mode-btn mode-on {{ 'active' if s.mode=='on' else '' }}" style="width:100%">On (auto)</button></form>
+      <form action="/mode" method="post"><button name="mode" value="off"
+        class="mode-btn mode-off {{ 'active' if s.mode=='off' else '' }}" style="width:100%">Off</button></form>
+      <form action="/mode" method="post"><button name="mode" value="photos"
+        class="mode-btn mode-photos {{ 'active' if s.mode=='photos' else '' }}" style="width:100%">Photos only</button></form>
+      <form action="/mode" method="post"><button name="mode" value="spotify"
+        class="mode-btn mode-spotify {{ 'active' if s.mode=='spotify' else '' }}" style="width:100%">Spotify only</button></form>
+    </div>
+    <p class="pill" style="margin-top:.7rem">On (auto): shows Spotify art while music plays, photos otherwise.</p>
+  </div>
+
+  <!-- BRIGHTNESS -->
+  <div class="card">
+    <h2>Brightness</h2>
+    <div class="row">
+      <input type="range" id="brightness" min="1" max="100" step="1" value="{{ s.brightness }}">
+      <span class="big" id="bval">{{ s.brightness }}</span>
+    </div>
+  </div>
+
+  <!-- SLIDESHOW -->
+  <div class="card">
+    <h2>Photo slideshow</h2>
+    <form action="/slideshow" method="post" class="row">
+      <label for="slideshow_seconds" style="margin:0">Seconds per photo</label>
+      <input type="number" id="slideshow_seconds" name="slideshow_seconds"
+             min="1" max="600" value="{{ s.slideshow_seconds }}" style="width:90px">
+      <input type="submit" class="save" value="Save">
+    </form>
+    <hr>
+    <div class="row">
+      <button type="button" id="next_photo" style="background:var(--accent2)">Change photo &rsaquo;</button>
+      <span class="pill" id="next_photo_hint">Skip to the next photo now.</span>
+    </div>
+  </div>
+
+  <!-- SLEEP TIMER -->
+  <div class="card">
+    <h2>Screen timer</h2>
+    <form action="/timer" method="post">
+      <div class="switch">
+        <input type="checkbox" id="timer_enabled" name="timer_enabled"
+               {{ 'checked' if s.timer_enabled else '' }}>
+        <label for="timer_enabled" style="margin:0">Turn the screen off after</label>
+      </div>
+      <div class="row">
+        <input type="number" name="timer_minutes" min="1" max="1440"
+               value="{{ s.timer_minutes }}" style="width:90px"> minutes
+        <input type="submit" class="save" value="Save / restart timer">
+      </div>
+      <p class="pill" style="margin-top:.6rem">Counts down from when you save. Tapping a Display button resets it.</p>
+    </form>
+  </div>
+
+  <!-- DAILY SCHEDULE -->
+  <div class="card">
+    <h2>Daily schedule (quiet hours)</h2>
+    <form action="/schedule" method="post">
+      <div class="switch">
+        <input type="checkbox" id="schedule_enabled" name="schedule_enabled"
+               {{ 'checked' if s.schedule_enabled else '' }}>
+        <label for="schedule_enabled" style="margin:0">Off every day between</label>
+      </div>
+      <div class="row">
+        <input type="time" name="schedule_off" value="{{ s.schedule_off }}"> and
+        <input type="time" name="schedule_on" value="{{ s.schedule_on }}">
+        <input type="submit" class="save" value="Save">
+      </div>
+    </form>
+  </div>
+
+  <!-- SUNRISE / SUNSET DIMMER -->
+  <div class="card">
+    <h2>Sunrise / sunset dimmer</h2>
+    <form action="/dimmer" method="post">
+      <div class="switch">
+        <input type="checkbox" id="dimmer_enabled" name="dimmer_enabled"
+               {{ 'checked' if s.dimmer_enabled else '' }}>
+        <label for="dimmer_enabled" style="margin:0">Dim the screen at night (between sunset and sunrise)</label>
+      </div>
+      <label for="dim_brightness">Night brightness</label>
+      <div class="row">
+        <input type="number" id="dim_brightness" name="dim_brightness" min="1" max="100"
+               value="{{ s.dim_brightness }}" style="width:90px"> of 100
+      </div>
+      <div class="row" style="margin-top:.6rem">
+        <label style="margin:0">Latitude</label>
+        <input type="number" name="latitude" step="0.0001" min="-90" max="90"
+               value="{{ s.latitude }}" style="width:120px">
+        <label style="margin:0">Longitude</label>
+        <input type="number" name="longitude" step="0.0001" min="-180" max="180"
+               value="{{ s.longitude }}" style="width:120px">
+      </div>
+      <div class="row" style="margin-top:.6rem">
+        <input type="submit" class="save" value="Save">
+      </div>
+      <p class="pill" style="margin-top:.6rem">Daytime uses the Brightness slider above; night uses the level here.
+        Sunrise/sunset are computed from your latitude &amp; longitude.</p>
+    </form>
+  </div>
+</div>
+
+<script>
+  // Live brightness: debounced AJAX so dragging the slider updates instantly.
+  const slider = document.getElementById('brightness');
+  const bval = document.getElementById('bval');
+  let t = null;
+  slider.addEventListener('input', () => {
+    bval.textContent = slider.value;
+    clearTimeout(t);
+    t = setTimeout(() => {
+      const body = new URLSearchParams({ brightness: slider.value });
+      fetch('/brightness', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded',
+                   'X-Requested-With': 'XMLHttpRequest' },
+        body
+      });
+    }, 120);
+  });
+
+  // Change photo: AJAX so the page doesn't reload.
+  const nextBtn = document.getElementById('next_photo');
+  const nextHint = document.getElementById('next_photo_hint');
+  nextBtn.addEventListener('click', () => {
+    fetch('/next_photo', {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).then(r => r.ok ? r.json() : Promise.reject())
+      .then(() => { nextHint.textContent = 'Advanced ✓'; setTimeout(() => {
+        nextHint.textContent = 'Skip to the next photo now.'; }, 1500); })
+      .catch(() => { nextHint.textContent = 'Failed — is the display running?'; });
+  });
+
+  // Live dashboard: poll /status and refresh the preview.
+  function ago(epoch) {
+    if (!epoch) return '—';
+    let s = Math.max(0, Math.floor(Date.now() / 1000 - epoch));
+    if (s < 60) return s + 's ago';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    return Math.floor(s / 86400) + 'd ago';
+  }
+  function dur(s) {
+    if (s == null) return '—';
+    if (s < 60) return s + 's';
+    if (s < 3600) return Math.floor(s / 60) + 'm';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
+    return Math.floor(s / 86400) + 'd ' + Math.floor((s % 86400) / 3600) + 'h';
+  }
+  function nowLine(st) {
+    if (!st || !st.showing) return '—';
+    if (st.showing === 'spotify')
+      return '♫ ' + (st.song || 'Playing') + (st.artist ? ' — ' + st.artist : '');
+    if (st.showing === 'photo') return '🖼 ' + (st.photo || 'Photo');
+    if (st.showing === 'default') return 'Default image';
+    return 'Screen off';
+  }
+  const $ = id => document.getElementById(id);
+  function refreshDash() {
+    fetch('/status').then(r => r.json()).then(d => {
+      const st = d.status || {};
+      $('dash_now').textContent = nowLine(st);
+      $('dash_dot').className = 'dot' + (d.alive ? '' : ' dead');
+      $('dash_state').textContent = d.alive
+        ? ('mode: ' + (d.state ? d.state.mode : '?') + ' · showing: ' + (st.effective || '—'))
+        : 'display daemon not responding';
+      $('st_photos').textContent = d.photo_count;
+      $('st_bright').textContent = (st.brightness != null ? st.brightness : '–');
+      $('st_sync').textContent = ago(d.last_sync_epoch);
+      $('st_timer').textContent = d.timer_remaining_s == null ? 'off' : dur(d.timer_remaining_s);
+      $('st_temp').textContent = d.pi_temp_c == null ? '—' : d.pi_temp_c + '°C';
+      $('st_uptime').textContent = dur(d.uptime_s);
+      // refresh the panel snapshot (cache-busted)
+      $('preview').src = '/preview.png?t=' + Date.now();
+    }).catch(() => { $('dash_state').textContent = 'control panel unreachable'; });
+  }
+  refreshDash();
+  setInterval(refreshDash, 3000);
+</script>
+</body>
+</html>

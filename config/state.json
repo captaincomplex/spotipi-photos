@@ -1,0 +1,16 @@
+{
+  "mode": "on",
+  "brightness": 60,
+  "slideshow_seconds": 8,
+  "photo_advance": 0,
+  "dimmer_enabled": false,
+  "dim_brightness": 20,
+  "latitude": 51.5074,
+  "longitude": -0.1278,
+  "timer_enabled": false,
+  "timer_minutes": 30,
+  "timer_started": 0,
+  "schedule_enabled": false,
+  "schedule_off": "23:00",
+  "schedule_on": "07:00"
+}

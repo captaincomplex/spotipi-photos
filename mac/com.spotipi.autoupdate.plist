@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd job: checks for a new spotipi version every 6 hours and, if found,
+  pushes it to the Pi and restarts the services (with automatic rollback).
+
+  Install:
+    cp com.spotipi.autoupdate.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.spotipi.autoupdate.plist
+  Logs: /tmp/spotipi-update.log
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.spotipi.autoupdate</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/you/Dropbox/AI projects/Spotipi Photos/spotipi-photos/mac/auto_update.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>21600</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/spotipi-update.launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/spotipi-update.launchd.log</string>
+</dict>
+</plist>
