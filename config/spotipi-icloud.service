@@ -1,0 +1,13 @@
+[Unit]
+Description=Spotipi iCloud Shared Album sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=15
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+[Install]
+WantedBy=multi-user.target

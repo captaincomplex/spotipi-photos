@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>spotipi-photos — Spotify art + Apple Photos on an LED matrix</title>
+<meta name="description" content="Adds an Apple Photos slideshow to a spotipi LED-matrix build, with a rebuilt web control panel: modes, live brightness, a working screen-off timer, daily schedule and a live dashboard.">
+<style>
+  :root{
+    --bg:#0c0b10; --panel:#16151c; --panel2:#111017; --line:#262430;
+    --ink:#eef0f5; --muted:#9a97a8; --green:#1db954; --green2:#2ee06a; --violet:#8b5cf6;
+    --radius:14px; --max:960px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  a{color:var(--green2)}
+  .wrap{max-width:var(--max);margin:0 auto;padding:0 20px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+  header{border-bottom:1px solid var(--line);
+    background:radial-gradient(1100px 400px at 50% -150px,rgba(29,185,84,.16),transparent)}
+  .hero{padding:70px 0 50px;text-align:center}
+  .badge{display:inline-block;font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--green2);border:1px solid var(--line);border-radius:999px;padding:5px 14px;margin-bottom:22px}
+  h1{font-size:clamp(30px,6vw,52px);line-height:1.06;margin:0 0 16px;font-weight:800;letter-spacing:-.02em}
+  h1 .g{background:linear-gradient(90deg,var(--green),var(--green2));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .lead{max-width:640px;margin:0 auto 26px;color:var(--muted);font-size:clamp(16px,2.4vw,19px)}
+  .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .btn{display:inline-block;padding:12px 22px;border-radius:10px;font-weight:600;text-decoration:none}
+  .btn.primary{background:var(--green);color:#04120a}
+  .btn.ghost{border:1px solid var(--line);color:var(--ink)}
+
+  /* LED panel mockup */
+  .panelwrap{margin:40px auto 0;max-width:560px}
+  .matrix{aspect-ratio:1/1;border-radius:16px;padding:18px;
+    background:#050507;border:1px solid var(--line);
+    box-shadow:0 30px 60px -30px rgba(0,0,0,.85), inset 0 0 60px rgba(29,185,84,.06);
+    display:flex;flex-direction:column;justify-content:flex-end;position:relative;overflow:hidden}
+  .matrix::before{content:"";position:absolute;inset:0;
+    background-image:radial-gradient(circle,rgba(255,255,255,.05) 1px,transparent 1.4px);
+    background-size:9px 9px;opacity:.55;pointer-events:none}
+  .album{position:absolute;inset:0;
+    background:
+      linear-gradient(135deg,#1db954 0%,#0e7a38 40%,#8b5cf6 100%);
+    opacity:.9}
+  .album::after{content:"";position:absolute;inset:0;
+    background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.35),transparent 45%)}
+  .np{position:relative;z-index:2;background:linear-gradient(0deg,rgba(0,0,0,.72),transparent);
+    padding:18px 6px 4px;color:#fff}
+  .np .t{font-weight:800;font-size:clamp(16px,4vw,22px);letter-spacing:.01em;text-shadow:0 1px 6px rgba(0,0,0,.6)}
+  .np .a{color:#d7f5e3;font-size:14px;text-shadow:0 1px 6px rgba(0,0,0,.6)}
+  .cap{margin-top:12px;text-align:center;color:var(--muted);font-size:13px}
+
+  section{padding:56px 0;border-bottom:1px solid var(--line)}
+  h2{font-size:clamp(22px,4vw,30px);margin:0 0 8px;letter-spacing:-.01em}
+  .sub{color:var(--muted);margin:0 0 30px}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+  .card h3{margin:0 0 6px;font-size:17px}
+  .card p{margin:0;color:var(--muted);font-size:14.5px}
+  .k{color:var(--green2);font-weight:600}
+
+  .flow{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:18px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13.5px;color:#cfe6d6;overflow:auto;white-space:pre}
+
+  .dash{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:6px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .stat .n{font-size:20px;font-weight:800}
+  .stat .l{color:var(--muted);font-size:12.5px;text-transform:uppercase;letter-spacing:.06em}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--green2);
+    box-shadow:0 0 8px var(--green2);margin-right:6px;vertical-align:middle}
+
+  pre{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px;overflow:auto;
+    font-size:13.5px;color:#cfe1f2}
+  .note{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--green);
+    border-radius:10px;padding:14px 16px;color:var(--muted);font-size:14px}
+  footer{padding:40px 0 60px;color:var(--muted);font-size:13.5px;text-align:center}
+  footer a{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap hero">
+    <span class="badge">Raspberry Pi · Spotify · Apple Photos</span>
+    <h1>Album art when music plays,<br><span class="g">your photos when it doesn't</span></h1>
+    <p class="lead">spotipi-photos adds an <span class="k">Apple Photos slideshow</span> to a Ryan Ward–style
+      spotipi LED-matrix build, with a rebuilt web control panel: modes, live brightness, a
+      <em>working</em> screen-off timer, a daily schedule and a live dashboard.</p>
+    <div class="cta">
+      <a class="btn primary" href="#install">How it works</a>
+      <a class="btn ghost" href="https://github.com/USERNAME/spotipi-photos">View on GitHub</a>
+    </div>
+
+    <div class="panelwrap">
+      <div class="matrix">
+        <div class="album"></div>
+        <div class="np">
+          <div class="t">Now Playing</div>
+          <div class="a">Spotify art fills the 64×64 panel</div>
+        </div>
+      </div>
+      <p class="cap mono">64×64 RGB LED matrix · Spotify cover while music plays, photo slideshow otherwise</p>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>How the pieces fit</h2>
+    <p class="sub">A small job on the Mac mirrors an Apple Photos album to the Pi; the Pi runs the display and a web UI.</p>
+<div class="flow">Mac (Apple Photos album)
+   │  sync_album.py  — crop/resize to 64×64 PNG, rsync --delete
+   ▼
+Raspberry Pi  /home/pi/spotipi-photos/photos/   ← exact mirror of the album
+   │  displaySpotipi.py  — slideshow + Spotify priority, reads state.json live
+   │  client/app.py      — web UI on :80, writes state.json
+   ▼
+64×64 RGB LED matrix</div>
+    <p class="note" style="margin-top:18px"><strong>Why the screen-off timer finally works:</strong> the original
+      web app turned the panel on/off by <span class="mono">systemctl start/stop</span>-ing the display service
+      and restarted it on every brightness change — fragile timers and brightness. Here the display daemon is
+      <span class="k">always running</span> and re-reads <span class="mono">config/state.json</span> every loop.
+      The web UI only writes that file — no service juggling — so brightness is live and the timer is enforced
+      reliably by the daemon itself.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Control panel</h2>
+    <p class="sub">A web UI on the Pi (port 80) — open it from any browser or phone on your network.</p>
+    <div class="grid">
+      <div class="card"><h3>Modes</h3><p><span class="k">On (auto)</span> shows Spotify art while music plays and the photo slideshow otherwise; or force <span class="k">Photos only</span> / <span class="k">Spotify only</span>, or <span class="k">Off</span> (daemon keeps running).</p></div>
+      <div class="card"><h3>Live brightness</h3><p>A 1–100 slider that takes effect instantly, no restart.</p></div>
+      <div class="card"><h3>Photo slideshow</h3><p>Set seconds per photo, plus a <span class="k">Change photo</span> button to skip to the next one. Photos play in a shuffled order — every photo once per pass, never repeating back-to-back.</p></div>
+      <div class="card"><h3>Screen timer</h3><p>Turn the panel off after N minutes; the countdown restarts when you save it or tap a display button.</p></div>
+      <div class="card"><h3>Daily schedule</h3><p>A recurring off-window that correctly handles overnight, e.g. 23:00 → 07:00.</p></div>
+      <div class="card"><h3>Sunrise/sunset dimmer</h3><p>Automatically drops to a lower night brightness between sunset and sunrise — times computed from your latitude/longitude, no internet or API key needed.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>"Now on the panel" dashboard</h2>
+    <p class="sub">A live snapshot at the top of the web UI — what's actually on the matrix right now, refreshed every few seconds.</p>
+    <p style="margin:0 0 14px"><span class="dot"></span><span class="mono">display daemon: running</span></p>
+    <div class="dash">
+      <div class="stat"><div class="n">128</div><div class="l">Photos synced</div></div>
+      <div class="stat"><div class="n">60</div><div class="l">Brightness</div></div>
+      <div class="stat"><div class="n">2m ago</div><div class="l">Last sync</div></div>
+      <div class="stat"><div class="n">18m</div><div class="l">Timer left</div></div>
+      <div class="stat"><div class="n">47°C</div><div class="l">Pi CPU temp</div></div>
+      <div class="stat"><div class="n">6d 4h</div><div class="l">Uptime</div></div>
+    </div>
+    <p class="note" style="margin-top:18px">The daemon publishes a small <span class="mono">status.json</span> plus a
+      64×64 <span class="mono">current.png</span> snapshot each time the panel changes, with a 10-second heartbeat.
+      The web app reads those and adds Pi temp/uptime/last-sync locally — so the dashboard needs
+      <strong>no extra Spotify credentials</strong>. These runtime files are regenerated by the daemon and aren't shipped in the release.</p>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Set up</h2>
+    <p class="sub">Two halves: the Raspberry Pi (display + web UI) and the Mac (Apple Photos → Pi sync).</p>
+    <p><strong>On the Pi</strong> — copy the <span class="mono">spotipi-photos/</span> folder over, make sure the Spotify token exists, then:</p>
+<pre class="mono">cd ~/spotipi-photos
+sudo bash install_pi.sh      # installs deps, asks for your Spotify creds,
+                             # creates the spotipi + spotipi-client services</pre>
+    <p>Open <span class="mono">http://&lt;pi-ip&gt;</span>. Set your real panel details (rows/columns,
+       <span class="mono">hardware_mapping</span>, <span class="mono">gpio_slowdown</span>) in
+       <span class="mono">config/rgb_options.ini</span>.</p>
+    <p style="margin-top:18px"><strong>On the Mac</strong> — create an Apple Photos album named exactly
+       <span class="mono">Spotipi</span>, then:</p>
+<pre class="mono">cd spotipi-photos/mac
+bash install_mac.sh
+python3 sync_album.py --dry-run   # preview
+python3 sync_album.py             # sync (rsync --delete keeps the Pi mirrored)</pre>
+    <p>Remove a photo from the album and it disappears from the Pi automatically. A LaunchAgent can run the sync
+       every few minutes, and an optional auto-updater pushes new code to the Pi and rolls back if a service fails to start.</p>
+    <p class="note" style="margin-top:18px">Spotify credentials and the token are entered at install time and live only on the Pi
+      (never in the repo). Needs scope <span class="mono">user-read-currently-playing user-read-playback-state</span>;
+      re-run the token generation roughly every 6 months if album art stops appearing.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>spotipi-photos — a photos + web-panel layer over a Ryan Ward–style spotipi build.</p>
+    <p>Pure display/timer/schedule logic is covered by tests. · <a href="https://github.com/USERNAME/spotipi-photos">Source on GitHub</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

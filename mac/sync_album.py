@@ -58,11 +58,14 @@ def main():
     ap.add_argument("--album", default="Spotipi",
                     help="Name of the Apple Photos album to sync (default: 'Spotipi').")
     ap.add_argument("--pi-host", default="pi@spotipi.local",
-                    help="user@host for the Pi (default: pi@spotipi.local).")
-    ap.add_argument("--pi-dir", default="/home/pi/spotipi/photos",
+                    help="user@host for the Pi (default: pi@spotipi.local). "
+                         "Use the Pi's IP address instead if .local won't resolve.")
+    ap.add_argument("--pi-dir", default="/home/pi/spotipi-photos/photos",
                     help="Destination photos folder on the Pi.")
     ap.add_argument("--size", type=int, default=64,
-                    help="Matrix size in pixels (default: 64).")
+                    help="Matrix size in pixels: 64 for a 64x64 panel, 32 for a "
+                         "32x32 one. Must match rows/columns in rgb_options.ini "
+                         "(default: 64).")
     ap.add_argument("--ssh-port", default="22", help="SSH port on the Pi (default: 22).")
     ap.add_argument("--dry-run", action="store_true",
                     help="Build images but show the rsync command instead of running it.")

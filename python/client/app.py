@@ -23,12 +23,43 @@ from flask import (Flask, render_template, request, redirect, url_for,
 # allow importing state.py from ../ (the python/ folder)
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from state import (read_state, write_state, reset_timer,  # noqa: E402
-                   read_status, PREVIEW_PATH)
+                   read_status, read_icloud_status, PREVIEW_PATH, LOGOS)
+import icloud_album                                       # noqa: E402
+
+try:
+    from PIL import Image, ImageOps
+except ImportError:                                       # pragma: no cover
+    Image = None
+
+try:                       # iPhone photos are HEIC; Safari usually converts to
+    import pillow_heif     # JPEG on upload, but not always, so accept both.
+    pillow_heif.register_heif_opener()
+except ImportError:
+    pass
 
 app = Flask(__name__)
 app.config["CACHE_TYPE"] = "null"
 
 VALID_MODES = {"on", "off", "photos", "spotify"}
+
+# Phone uploads are whole camera-roll photos: several MB each, sometimes 20
+# at a time. This is only a sanity ceiling -- everything is resized to 64px
+# and thrown away within the second.
+app.config["MAX_CONTENT_LENGTH"] = 256 * 1024 * 1024
+UPLOAD_PREFIX = "up-"
+CONFIG_INI = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "config", "rgb_options.ini"))
+
+
+def panel_size():
+    """Panel edge in pixels, so uploads are cropped to what actually displays."""
+    try:
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg.read(CONFIG_INI)
+        return max(int(cfg["DEFAULT"]["rows"]), int(cfg["DEFAULT"]["columns"]))
+    except Exception:
+        return 64
 
 
 PHOTOS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "photos"))
@@ -88,6 +119,7 @@ def dashboard():
         "pi_temp_c": pi_temp_c(),
         "uptime_s": uptime_seconds(),
         "timer_remaining_s": remaining,
+        "icloud": read_icloud_status(),
     }
 
 
@@ -108,6 +140,57 @@ def preview():
           b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc```\x00\x00"
           b"\x00\x04\x00\x01\xf6\x178U\x00\x00\x00\x00IEND\xaeB`\x82")
     return Response(px, mimetype="image/png")
+
+
+# ------------------------------------------------------------------ logo -----
+# Files made by image/build_logo_assets.py, one folder per logo.
+LOGO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "image", "logos"))
+
+
+def chosen_logo():
+    key = read_state().get("logo")
+    return key if key in LOGOS else LOGOS[0]
+
+
+def logo_file(key, name):
+    """Send image/logos/<key>/<name>; key is always checked against LOGOS."""
+    path = os.path.join(LOGO_DIR, key, name)
+    if key not in LOGOS or not os.path.exists(path):
+        return Response(status=404)
+    resp = send_file(path)
+    resp.headers["Cache-Control"] = "no-cache"   # the choice can change
+    return resp
+
+
+@app.route("/favicon.ico")
+def favicon():
+    return logo_file(chosen_logo(), "favicon.ico")
+
+
+@app.route("/apple-touch-icon.png")
+def touch_icon():
+    # what iPhone uses for "Add to Home Screen"
+    return logo_file(chosen_logo(), "icon-256.png")
+
+
+@app.route("/logo/<key>.png")
+def logo_preview(key):
+    return logo_file(key, "icon-128.png")
+
+
+@app.route("/logo/<key>/small.png")
+def logo_small(key):
+    # solid pixels: at header size the 16-dot version turns to mush
+    return logo_file(key, "icon-64.png")
+
+
+@app.route("/logo", methods=["POST"])
+def set_logo():
+    key = request.form.get("logo", LOGOS[0])
+    state = read_state()
+    state["logo"] = key if key in LOGOS else LOGOS[0]
+    write_state(state)
+    return redirect(url_for("index"))
 
 
 @app.route("/mode", methods=["POST"])
@@ -204,6 +287,109 @@ def set_schedule():
     state["schedule_on"] = request.form.get("schedule_on", "07:00")
     write_state(state)
     return redirect(url_for("index"))
+
+
+@app.route("/icloud", methods=["POST"])
+def set_icloud():
+    """Save the shared-album link and poll interval.
+
+    The link is validated here so a typo gives an answer straight away, rather
+    than sitting in state.json failing quietly every fifteen minutes.
+    """
+    state = read_state()
+    url = (request.form.get("icloud_url") or "").strip()
+    if url:
+        try:
+            icloud_album.parse_token(url)
+        except icloud_album.AlbumError as e:
+            return render_template("index.html", s=read_state(),
+                                   photo_count=photo_count(), dash=dashboard(),
+                                   error=str(e)), 400
+    state["icloud_url"] = url
+    try:
+        state["icloud_minutes"] = max(1, min(1440, int(request.form.get("icloud_minutes", 15))))
+    except (TypeError, ValueError):
+        state["icloud_minutes"] = 15
+    write_state(state)
+    return redirect(url_for("index"))
+
+
+@app.route("/icloud/sync", methods=["POST"])
+def icloud_sync_now():
+    """Bump a nonce; the sync daemon notices within its tick and runs at once."""
+    state = read_state()
+    state["icloud_sync_now"] = int(state.get("icloud_sync_now", 0)) + 1
+    write_state(state)
+    return redirect(url_for("index"))
+
+
+@app.route("/upload", methods=["POST"])
+def upload():
+    """Add photos straight from the browser.
+
+    This is what makes an iPhone self-sufficient: iOS Safari's file picker
+    reaches the camera roll, so photos go phone -> panel with no computer in
+    between. It works the same from any desktop browser.
+
+    Cropping happens here rather than on the phone because the display daemon
+    only ever scales down -- an uncropped 4:3 photo would sit letterboxed.
+    """
+    if Image is None:
+        return render_template("index.html", s=read_state(),
+                               photo_count=photo_count(), dash=dashboard(),
+                               error="Pillow isn't installed on the Pi, so uploads "
+                                     "can't be resized."), 500
+
+    files = request.files.getlist("photos")
+    size = panel_size()
+    os.makedirs(PHOTOS_DIR, exist_ok=True)
+    saved, failed = 0, 0
+
+    for f in files:
+        if not f or not f.filename:
+            continue
+        try:
+            with Image.open(f.stream) as im:
+                im = ImageOps.exif_transpose(im).convert("RGB")
+                im = ImageOps.fit(im, (size, size), Image.Resampling.LANCZOS)
+                # Name by content-independent counter + time: two photos from a
+                # phone can share a filename ("IMG_0001.HEIC") across devices.
+                name = f"{UPLOAD_PREFIX}{int(time.time() * 1000)}-{saved}.png"
+                im.save(os.path.join(PHOTOS_DIR, name), "PNG")
+            saved += 1
+        except Exception:
+            failed += 1
+
+    msg = f"Added {saved} photo{'s' if saved != 1 else ''}."
+    if failed:
+        msg += f" {failed} could not be read (unsupported format?)."
+    return render_template("index.html", s=read_state(),
+                           photo_count=photo_count(), dash=dashboard(),
+                           notice=msg)
+
+
+@app.route("/photos/delete", methods=["POST"])
+def delete_uploads():
+    """Remove photos added through the browser.
+
+    Deliberately only touches up-* files. Photos mirrored from a Mac album or
+    an iCloud album are owned by their sync, which would put them straight
+    back -- deleting those belongs in the album, on the phone.
+    """
+    removed = 0
+    try:
+        for f in os.listdir(PHOTOS_DIR):
+            if f.startswith(UPLOAD_PREFIX):
+                try:
+                    os.remove(os.path.join(PHOTOS_DIR, f))
+                    removed += 1
+                except OSError:
+                    pass
+    except FileNotFoundError:
+        pass
+    return render_template("index.html", s=read_state(),
+                           photo_count=photo_count(), dash=dashboard(),
+                           notice=f"Removed {removed} uploaded photo(s).")
 
 
 # Live status endpoint the dashboard polls (also handy for debugging).

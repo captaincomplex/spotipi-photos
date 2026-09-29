@@ -12,5 +12,8 @@
   "timer_started": 0,
   "schedule_enabled": false,
   "schedule_off": "23:00",
-  "schedule_on": "07:00"
+  "schedule_on": "07:00",
+  "icloud_url": "",
+  "icloud_minutes": 15,
+  "icloud_sync_now": 1
 }

@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>spotipi control</title>
+  <link rel="icon" href="/favicon.ico?v={{ s.logo }}">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v={{ s.logo }}">
   <style>
     :root { --bg:#121214; --card:#1e1e22; --fg:#f2f2f4; --muted:#9a9aa2;
             --accent:#1db954; --accent2:#3b82f6; --danger:#e0344b; --line:#2c2c31; }
@@ -53,11 +55,27 @@
              margin-top:.8rem; font-size:.82rem; }
     .stats .k { color:var(--muted); }
     .stats .v { color:var(--fg); float:right; font-variant-numeric:tabular-nums; }
+    /* header icon + logo picker */
+    .brand { display:flex; align-items:center; gap:.7rem; }
+    .brand img { width:44px; height:44px; flex:0 0 auto; }
+    .logos { display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
+    .logo-btn { width:100%; display:flex; flex-direction:column; align-items:center; gap:.45rem;
+                padding:.8rem .6rem; }
+    .logo-btn img { width:72px; height:72px; }
+    .logo-btn.active { outline:2px solid var(--accent); background:#1f3326; }
   </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>spotipi <small>{{ photo_count }} photo(s) synced &middot; mode: {{ s.mode }}</small></h1>
+  <div class="brand">
+    <img src="/logo/{{ s.logo }}/small.png" alt="">
+    <h1>spotipi <small>{{ photo_count }} photo(s) &middot; mode: {{ s.mode }}</small></h1>
+  </div>
+
+  {% if notice %}<div class="card" style="border-color:#2e7d5b;background:#12291f">
+    <strong>{{ notice }}</strong></div>{% endif %}
+  {% if error %}<div class="card" style="border-color:#8a3b3b;background:#2a1616">
+    <strong>{{ error }}</strong></div>{% endif %}
 
   <!-- LIVE DASHBOARD -->
   <div class="card">
@@ -118,6 +136,77 @@
       <button type="button" id="next_photo" style="background:var(--accent2)">Change photo &rsaquo;</button>
       <span class="pill" id="next_photo_hint">Skip to the next photo now.</span>
     </div>
+  </div>
+
+  <!-- ADD PHOTOS -->
+  <div class="card">
+    <h2>Add photos</h2>
+    <p style="margin:.2rem 0 .7rem;color:var(--muted);font-size:.86rem">
+      Straight from this device. On an iPhone this opens your camera roll, so
+      you need no computer at all. Pictures are cropped square and resized to
+      fit the panel automatically.
+    </p>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+      <input type="file" name="photos" accept="image/*" multiple
+             style="width:100%;margin-bottom:.6rem">
+      <input type="submit" class="save" value="Upload">
+    </form>
+    <hr>
+    <form action="/photos/delete" method="post" class="row"
+          onsubmit="return confirm('Remove every photo added this way? Photos from an album sync are left alone.')">
+      <input type="submit" value="Remove uploaded photos"
+             style="background:#5a2b2b;color:#fff">
+      <span class="pill">Album-synced photos aren't touched.</span>
+    </form>
+  </div>
+
+  <!-- ICLOUD SHARED ALBUM -->
+  <div class="card">
+    <h2>iCloud Shared Album</h2>
+    <p style="margin:.2rem 0 .7rem;color:var(--muted);font-size:.86rem">
+      The automatic route with no Mac involved. On your iPhone: Photos &rarr; new
+      Shared Album &rarr; turn on <em>Public Website</em> &rarr; copy the link and
+      paste it here. Add a photo to that album and it reaches the panel by itself;
+      remove one and it goes.
+    </p>
+    <form action="/icloud" method="post">
+      <label for="icloud_url" style="display:block;margin-bottom:.25rem">Album link</label>
+      <input type="url" id="icloud_url" name="icloud_url"
+             placeholder="https://www.icloud.com/sharedalbum/#B0..."
+             value="{{ s.icloud_url }}" style="width:100%;margin-bottom:.6rem">
+      <div class="row">
+        <label for="icloud_minutes" style="margin:0">Check every</label>
+        <input type="number" id="icloud_minutes" name="icloud_minutes"
+               min="1" max="1440" value="{{ s.icloud_minutes }}" style="width:80px">
+        <span class="pill">minutes</span>
+        <input type="submit" class="save" value="Save">
+      </div>
+    </form>
+    <hr>
+    <div class="row">
+      <form action="/icloud/sync" method="post" style="margin:0">
+        <input type="submit" value="Sync now" style="background:var(--accent2)">
+      </form>
+      <span class="pill">
+        {% if dash.icloud and dash.icloud.at %}
+          {% if dash.icloud.ok %}
+            Last sync OK &middot; {{ dash.icloud.total }} in album
+            (+{{ dash.icloud.added }} / -{{ dash.icloud.removed }})
+          {% else %}
+            Last sync failed: {{ dash.icloud.error }}
+          {% endif %}
+        {% elif s.icloud_url %}
+          Waiting for the first sync.
+        {% else %}
+          Not set up.
+        {% endif %}
+      </span>
+    </div>
+    <p style="margin:.7rem 0 0;color:var(--muted);font-size:.78rem">
+      Anyone with that link can view the album, so treat it as semi-private.
+      Apple don't publish this interface, so it could change without warning &mdash;
+      if syncing stops, your photos already on the panel stay put.
+    </p>
   </div>
 
   <!-- SLEEP TIMER -->
@@ -183,6 +272,21 @@
       <p class="pill" style="margin-top:.6rem">Daytime uses the Brightness slider above; night uses the level here.
         Sunrise/sunset are computed from your latitude &amp; longitude.</p>
     </form>
+  </div>
+
+  <!-- LOGO -->
+  <div class="card">
+    <h2>Logo</h2>
+    <div class="logos">
+      <form action="/logo" method="post"><button name="logo" value="sunset"
+        class="logo-btn {{ 'active' if s.logo=='sunset' else '' }}">
+        <img src="/logo/sunset.png" alt="">Orange sunset</button></form>
+      <form action="/logo" method="post"><button name="logo" value="dusk"
+        class="logo-btn {{ 'active' if s.logo=='dusk' else '' }}">
+        <img src="/logo/dusk.png" alt="">Pink dusk</button></form>
+    </div>
+    <p class="pill" style="margin-top:.7rem">Shown on the panel when there's nothing else to show,
+      and used as this page's icon. If the logo is on the panel now, it changes within a second.</p>
   </div>
 </div>
 

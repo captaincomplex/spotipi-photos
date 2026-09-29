@@ -6,8 +6,11 @@ Kept free of any hardware imports so it can be unit-tested on any machine
 """
 
 import math
+import os
 import time
 from datetime import datetime, timezone
+
+from state import LOGOS
 
 
 def parse_hhmm(s):
@@ -170,3 +173,19 @@ def compute_effective(state, is_playing, now=None, now_epoch=None):
         return "photos"
     # auto
     return "spotify" if is_playing else "photos"
+
+
+def logo_image_path(state, panel_px, logos_dir, fallback, logos=LOGOS):
+    """The splash to show: <logos_dir>/<logo>-<64|32>.png for the logo picked
+    in the web panel, drawn one pixel per LED at the panel's own size.
+
+    An unknown logo name means the first one -- a path is never built from an
+    unchecked value. Falls back to `fallback` (the ini's default_image) if the
+    file isn't there, e.g. on an install that predates the logo files.
+    """
+    key = state.get("logo")
+    if key not in logos:
+        key = logos[0]
+    size = 32 if panel_px <= 32 else 64
+    path = os.path.join(logos_dir, "%s-%d.png" % (key, size))
+    return path if os.path.exists(path) else fallback

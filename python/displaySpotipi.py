@@ -33,7 +33,7 @@ import configparser
 
 from getSongInfo import getSongInfo
 from state import read_state, write_status, PREVIEW_PATH
-from display_logic import compute_effective, effective_brightness
+from display_logic import compute_effective, effective_brightness, logo_image_path
 
 STATUS_WRITE_SECONDS = 10.0    # heartbeat: refresh status.json at least this often
 
@@ -71,6 +71,9 @@ def load_matrix():
     options.drop_privileges = False   # stay root so we can read state.json, photos, token cache
     matrix = RGBMatrix(options=options)
     return matrix, os.path.abspath(default_image)
+
+
+LOGOS_DIR = os.path.abspath(os.path.join(DIR, "..", "config", "logos"))
 
 
 def list_photos():
@@ -158,10 +161,16 @@ def main():
             current_image = None
             save_preview(None)   # black frame
 
-    def show_default():
+    def show_default(state):
+        """The logo splash. Which logo comes from the web panel's Logo card
+        (state["logo"]); it is redrawn only when that choice changes."""
+        path = logo_image_path(state, max(matrix.width, matrix.height),
+                               LOGOS_DIR, default_image_path)
+        if rendered_key == ("default", path):
+            return
         try:
-            img = fit(Image.open(default_image_path), matrix)
-            show(img, "default")
+            img = fit(Image.open(path), matrix)
+            show(img, ("default", path))
         except Exception as e:
             log.warning("default image failed: %s", e)
             blank()
@@ -217,13 +226,11 @@ def main():
                         img = fit(Image.open(BytesIO(resp.content)), matrix)
                         show(img, key)
                 else:
-                    if rendered_key != "default":
-                        show_default()
+                    show_default(state)
 
             elif effective == "photos":
                 if not photos:
-                    if rendered_key != "default":
-                        show_default()
+                    show_default(state)
                 else:
                     interval = max(1, int(state.get("slideshow_seconds", 8)))
                     if advance_pending or rendered_key is None \
@@ -246,7 +253,7 @@ def main():
                 showing, cur_photo = "photo", os.path.basename(rendered_key[1])
             elif isinstance(rendered_key, tuple) and rendered_key[0] == "spotify":
                 showing, cur_photo = "spotify", None
-            elif rendered_key == "default":
+            elif isinstance(rendered_key, tuple) and rendered_key[0] == "default":
                 showing, cur_photo = "default", None
             else:
                 showing, cur_photo = "off", None

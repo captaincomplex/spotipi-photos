@@ -49,7 +49,22 @@ DEFAULT_STATE = {
     "schedule_enabled": False,
     "schedule_off": "23:00",        # HH:MM 24h
     "schedule_on": "07:00",
+
+    # iCloud Shared Album sync (the iPhone-only route in). The album's public
+    # link, polled by the spotipi-icloud daemon. Empty = feature off.
+    "icloud_url": "",
+    "icloud_minutes": 15,           # how often to poll
+    "icloud_sync_now": 0,           # nonce: bump from the web UI to sync at once
+
+    # Which logo the panel shows when there is nothing else to show, and the
+    # web panel uses as its icon. Files: config/logos/<logo>-64.png / -32.png.
+    "logo": "sunset",
 }
+
+# The logos on offer (image/build_logo_assets.py makes them). First = default.
+#   sunset -- orange sunset, the sun setting behind the ridges
+#   dusk   -- pink dusk, the whole sun just clear of the ridges
+LOGOS = ("sunset", "dusk")
 
 
 def read_state():
@@ -89,6 +104,34 @@ def reset_timer(state):
     """Mark the sleep timer as starting now."""
     state["timer_started"] = int(time.time())
     return state
+
+
+# Written by the iCloud daemon, read by the web dashboard. Kept apart from
+# status.json so the display daemon and the sync daemon never fight over a file.
+ICLOUD_STATUS_PATH = os.path.abspath(
+    os.path.join(DIR, "..", "config", "icloud_status.json"))
+
+
+def write_icloud_status(status):
+    """Atomically write the iCloud sync daemon's last-run status."""
+    os.makedirs(os.path.dirname(ICLOUD_STATUS_PATH), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(ICLOUD_STATUS_PATH), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(status, f)
+        os.replace(tmp, ICLOUD_STATUS_PATH)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def read_icloud_status():
+    """Last iCloud sync result, or {} if it has never run."""
+    try:
+        with open(ICLOUD_STATUS_PATH, "r") as f:
+            return json.load(f) or {}
+    except (FileNotFoundError, json.JSONDecodeError, PermissionError, OSError):
+        return {}
 
 
 def write_status(status):

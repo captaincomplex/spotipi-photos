@@ -1,19 +1,29 @@
 # spotipi-photos
 
-Adds an **Apple Photos slideshow** to a Ryan Ward–style spotipi LED‑matrix build, with a
-rebuilt **web control panel** (modes, live brightness, a *working* screen‑off timer, and a
-daily schedule). Photos sync from a named Apple Photos album on your Mac to the Pi; when you
-remove a photo from the album it disappears from the Pi automatically.
+![Spotipi Photos](image/wordmark.png)
+
+Adds a **photo slideshow** to a Ryan Ward–style spotipi LED‑matrix build, with a rebuilt
+**web control panel** (modes, live brightness, a *working* screen‑off timer, a daily
+schedule and a sunrise/sunset dimmer). Album art takes over whenever Spotify is playing.
+
+Photos get on in any of three ways, none of which exclude the others:
+
+- **iPhone only** — a public iCloud Shared Album. Paste its link into the control panel and
+  the Pi keeps itself in step with it. No Mac, no computer at all.
+- **Any browser** — upload from the control panel. On an iPhone that opens the camera roll.
+- **Mac** — a named Apple Photos album, mirrored every five minutes by `mac/sync_album.py`.
 
 ```
-Mac (Apple Photos album)
-   │  sync_album.py  — crop/resize to 64×64 PNG, rsync --delete
-   ▼
-Raspberry Pi  /home/pi/spotipi-photos/photos/   ← exact mirror of the album
+Mac (Apple Photos album)              any computer (a folder of pictures)
+   │  sync_album.py                      │  tools/prepare_photos.py
+   │  crop/resize + rsync --delete       │  crop/resize + scp or rsync
+   └──────────────┬──────────────────────┘
+                  ▼
+Raspberry Pi  /home/pi/spotipi-photos/photos/
    │  displaySpotipi.py  — slideshow + Spotify priority, reads state.json live
    │  client/app.py      — web UI on :80, writes state.json
    ▼
-64×64 RGB LED matrix
+RGB LED matrix — 64×64, 32×32 or 64×32
 ```
 
 ## Why this fixes the broken screen‑off timer
@@ -23,6 +33,19 @@ fragile. Here the **display daemon is always running** and re‑reads `config/st
 loop. The web UI only writes that file — no service juggling — so brightness is live and the
 timer is enforced reliably by the daemon itself.
 
+## Documentation
+
+| Document | For |
+|---|---|
+| [`docs/guides/SPOTIPI_BEGINNERS_GUIDE.md`](docs/guides/SPOTIPI_BEGINNERS_GUIDE.md) | Someone building this from nothing, who has never used a Pi. Every command in full, plus troubleshooting. |
+| [`docs/guides/spotipi_assembly_guide.pdf`](docs/guides/spotipi_assembly_guide.pdf) | The hardware, in 8 illustrated pages. Print it and put it next to the parts. Source: `assembly_guide_source.py`. |
+| [`HARDWARE.md`](HARDWARE.md) | What to buy and why, with dated prices, the power budget, and the Pi-model reasoning. |
+| [`SPOTIFY_TOKEN_RENEWAL.txt`](SPOTIFY_TOKEN_RENEWAL.txt) | Re-doing the Spotify login, roughly every 6 months. |
+| [`image/build_logo_assets.py`](image/build_logo_assets.py) | Regenerates both logos -- app icons, favicon, wordmark, panel splash -- from the photo artwork. |
+
+The rest of this README is the quick version, for someone who already knows their
+way around a Pi.
+
 ---
 
 ## Part A — Raspberry Pi (spotipi.local)
@@ -31,12 +54,16 @@ timer is enforced reliably by the daemon itself.
 > restored. Until then you can copy `spotipi-photos/` onto the Pi with a USB stick or microSD.
 
 1. Copy the `spotipi-photos/` folder to the Pi, e.g. `~/spotipi-photos`.
-2. Make sure the Spotify token exists (same as original spotipi):
+2. Create a Spotify developer app (free, no Premium needed) at
+   <https://developer.spotify.com/dashboard> with redirect URI
+   `http://127.0.0.1/callback`, then do the one-off login:
    ```bash
    cd ~/spotipi-photos
-   bash generate-token.sh        # if you don't already have a .cache-<username>
+   bash generate-token.sh        # writes .cache-<username>
    ```
    *(Reuse your existing `.cache-<username>` from the current install if you have one.)*
+   The full walkthrough, including where each credential comes from, is in the
+   beginner's guide.
 3. Install:
    ```bash
    cd ~/spotipi-photos
@@ -47,12 +74,18 @@ timer is enforced reliably by the daemon itself.
    - `spotipi` → `python/displaySpotipi.py`
    - `spotipi-client` → `python/client/app.py` (web UI, port 80)
 
-   If the Adafruit `rgbmatrix` driver isn't built on this Pi yet, run the Adafruit installer
-   once (the script prints the command), then re‑run `install_pi.sh`.
+   If the Adafruit `rgbmatrix` driver isn't built on this Pi yet, `install_pi.sh` prints the
+   commands to build it, then re-run it. (Adafruit replaced their old `rgb-matrix.sh` with a
+   Python installer; the `.sh` URL that used to be quoted here now 404s.)
+   `install_pi.sh` also sets `dtparam=audio=off`, which the matrix needs — the onboard audio
+   and the panel share a timing circuit.
 4. Open **http://spotipi.local** in any browser on your network.
 
-Set your real panel details in `config/rgb_options.ini` (rows/columns, `hardware_mapping`,
-`gpio_slowdown`) and `sudo systemctl restart spotipi` if you change them.
+Set your panel details in `config/rgb_options.ini` and `sudo systemctl restart spotipi`
+after any change. **64×64, 32×32 and 64×32 panels are all supported** — set `rows` and
+`columns` to match, and pass the same `--size` when you sync photos. `hardware_mapping`
+stays `adafruit-hat` unless you have soldered the GPIO4→GPIO18 PWM jumper, in which case
+use `adafruit-hat-pwm`. Raise `gpio_slowdown` if the panel tears.
 
 ### Controls (web UI)
 - **Now on the panel** — a live dashboard at the top: a snapshot preview of what's
@@ -75,7 +108,11 @@ Set your real panel details in `config/rgb_options.ini` (rows/columns, `hardware
 
 ---
 
-## Part B — Mac (Apple Photos → Pi)
+## Part B — getting photos on
+
+Two routes, depending on what you own.
+
+### B1 — Apple Photos, automatic (requires a Mac)
 
 The Pi can't read your Mac's Photos library, so a small job runs on the Mac.
 
@@ -100,6 +137,22 @@ The Pi can't read your Mac's Photos library, so a small job runs on the Mac.
    ```
 
 `sync_album.py` options: `--album`, `--pi-host`, `--pi-dir`, `--size`, `--ssh-port`, `--dry-run`.
+Use `--size 32` for a 32×32 panel.
+
+### B2 — any computer, manual (Windows, macOS, Linux)
+
+`tools/prepare_photos.py` centre-crops and resizes a folder of pictures to the panel size and
+copies them over. This matters because the display daemon scales images down but never crops
+them, so an uncropped 4:3 photo arrives letterboxed.
+
+```bash
+python3 tools/prepare_photos.py ~/Pictures/forpanel --push pi@spotipi.local
+python3 tools/prepare_photos.py ~/Pictures/forpanel --size 32       # 32x32 panel
+python3 tools/prepare_photos.py ~/Pictures/forpanel                 # prepare only, prints the scp command
+```
+
+Needs `pillow` (and `pillow-heif` for iPhone `.HEIC` files). On Windows, `scp` ships with
+Windows 10 and 11; WinSCP works too — the destination is `/home/pi/spotipi-photos/photos/`.
 
 ### How deletion sync works
 `sync_album.py` rebuilds the full album as 64×64 PNGs in a temp folder, then
@@ -127,12 +180,15 @@ Log: /tmp/spotipi-update.log
 ```
 spotipi-photos/
 ├── install_pi.sh              # Pi installer (creates systemd services)
+├── generate-token.sh          # one-off Spotify login -> .cache-<username>
+├── HARDWARE.md                # what to buy, and why
 ├── SPOTIFY_TOKEN_RENEWAL.txt  # how to refresh the Spotify token (~every 6 months)
 ├── README.md
 ├── config/
 │   ├── rgb_options.ini        # matrix hardware (64×64 default)
 │   ├── state.json             # live state written by the web UI
-│   ├── default.png            # shown when nothing else to display
+│   ├── default.png            # the default logo splash (Orange sunset)
+│   ├── logos/                 # both logo splashes, 64 and 32 px; picked in the web UI
 │   ├── spotipi.service        # display daemon unit
 │   └── spotipi-client.service # web UI unit
 ├── python/
@@ -140,14 +196,29 @@ spotipi-photos/
 │   ├── display_logic.py       # pure mode/timer/schedule logic (tested)
 │   ├── getSongInfo.py         # Spotify now-playing helper
 │   ├── state.py               # atomic state.json read/write
+│   ├── generateToken.py       # called by generate-token.sh
+│   ├── icloud_album.py        # public iCloud Shared Album -> photos/
+│   ├── icloudSync.py          # daemon: polls the album set in the web UI
 │   └── client/
 │       ├── app.py             # Flask web UI (port 80)
 │       └── templates/index.html
 ├── photos/                    # mirror of the album (populated by the Mac)
 ├── mac/
-│   ├── sync_album.py          # Apple Photos → Pi sync
+│   ├── sync_album.py          # Apple Photos → Pi sync (Mac only)
 │   ├── install_mac.sh
 │   └── com.spotipi.albumsync.plist
+├── tools/
+│   └── prepare_photos.py      # crop/resize + copy, any OS
+├── image/
+│   ├── build_logo_assets.py   # regenerates everything below from the photo artwork
+│   ├── stylise_candidates.py  # redraws a photo in the flat LP-sun style
+│   ├── logos/sunset/, logos/dusk/  # each logo's icons, favicon, wordmark, splash
+│   ├── icon.svg, icon-*.png, favicon.ico   # copies of the default (sunset)
+│   └── wordmark.png, wordmark-dark.png
+├── docs/guides/
+│   ├── SPOTIPI_BEGINNERS_GUIDE.md
+│   ├── spotipi_assembly_guide.pdf
+│   └── assembly_guide_source.py
 └── tests/
     └── test_logic.py
 ```
