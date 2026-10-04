@@ -26,6 +26,12 @@ Raspberry Pi  /home/pi/spotipi-photos/photos/
 RGB LED matrix — 64×64, 32×32 or 64×32
 ```
 
+## Licence
+
+Free and open source under the [MIT licence](LICENSE). This project is built on
+[Spotipi](https://github.com/ryanwa18/spotipi) by Ryan Ward (MIT, copyright 2020).
+His copyright notice is kept in `LICENSE`, as that licence requires.
+
 ## Why this fixes the broken screen‑off timer
 The original web app turned the panel on/off by `systemctl start/stop`‑ing the display
 service and *restarted* it on every brightness change. That makes timers and brightness
